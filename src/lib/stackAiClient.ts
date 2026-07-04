@@ -20,7 +20,16 @@ export async function sendMessageToMentor(
     body: JSON.stringify({ message, userId }),
   });
 
-  const data = (await res.json()) as { reply?: string; error?: string };
+  const raw = await res.text();
+  let data: { reply?: string; error?: string } = {};
+
+  try {
+    data = raw ? (JSON.parse(raw) as { reply?: string; error?: string }) : {};
+  } catch {
+    throw new MentorApiError(
+      raw.trim() || 'Chat service is unavailable. Check Vercel env vars and redeploy.',
+    );
+  }
 
   if (!res.ok) {
     throw new MentorApiError(

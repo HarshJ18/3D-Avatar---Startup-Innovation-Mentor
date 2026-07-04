@@ -29,7 +29,11 @@ function formatChatError(err: unknown): string {
   }
 
   if (/Missing STACKAI/i.test(raw)) {
-    return 'API keys are missing. Add STACKAI_API_KEY and STACKAI_FLOW_URL to your .env file, then restart the dev server.';
+    return 'API keys are missing. Add STACKAI_API_KEY and STACKAI_FLOW_URL in Vercel Environment Variables, then redeploy.';
+  }
+
+  if (/server error|service is unavailable/i.test(raw)) {
+    return 'The chat API failed on Vercel. Confirm env vars are set, redeploy, and check Functions logs in the Vercel dashboard.';
   }
 
   return raw.length > 220 ? `${raw.slice(0, 220)}…` : raw;
