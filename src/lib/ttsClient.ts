@@ -100,8 +100,15 @@ export async function fetchMentorSpeechAudio(
   });
 
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new MentorSpeechError(data.error ?? 'Text-to-speech request failed.');
+    const raw = await res.text();
+    let error = 'Text-to-speech request failed.';
+    try {
+      const data = raw ? (JSON.parse(raw) as { error?: string }) : {};
+      if (data.error) error = data.error;
+    } catch {
+      if (raw.trim()) error = raw.trim();
+    }
+    throw new MentorSpeechError(error);
   }
 
   const audioBlob = await res.blob();

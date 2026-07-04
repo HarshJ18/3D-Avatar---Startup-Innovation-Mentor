@@ -1,7 +1,7 @@
 import {
   extractStackAiReply,
   parseStackAiError,
-} from './lib/stackAiResponse';
+} from './stackAiResponse';
 
 export async function callStackAiWorkflow(
   flowUrl: string,

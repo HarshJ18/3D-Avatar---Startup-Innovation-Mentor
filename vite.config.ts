@@ -2,7 +2,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { callStackAiWorkflow } from './api/stackAi';
+import { callStackAiWorkflow } from './lib/stackAi';
 
 function stackAiDevApi(): Plugin {
   return {

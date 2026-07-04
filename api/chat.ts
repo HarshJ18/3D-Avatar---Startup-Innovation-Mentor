@@ -1,15 +1,33 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { callStackAiWorkflow } from './stackAi';
+import { callStackAiWorkflow } from '../lib/stackAi';
+
+type ChatBody = {
+  message?: string;
+  userId?: string;
+};
+
+function readChatBody(req: VercelRequest): ChatBody {
+  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+    return req.body as ChatBody;
+  }
+
+  if (typeof req.body === 'string' && req.body.trim()) {
+    try {
+      return JSON.parse(req.body) as ChatBody;
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { message, userId } = req.body as {
-    message?: string;
-    userId?: string;
-  };
+  const { message, userId } = readChatBody(req);
 
   const flowUrl = process.env.STACKAI_FLOW_URL;
   const apiKey = process.env.STACKAI_API_KEY;
