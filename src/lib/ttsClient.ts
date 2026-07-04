@@ -5,9 +5,18 @@ export class MentorSpeechError extends Error {
   }
 }
 
-const MAX_CHARS_PER_CHUNK = 240;
-const FIRST_CHUNK_MAX_CHARS = 110;
+const MAX_CHARS_PER_CHUNK = 480;
+const FIRST_CHUNK_MAX_CHARS = 180;
 let preconnectDone = false;
+let activeSpeechAudio: HTMLAudioElement | null = null;
+
+export function stopActiveMentorSpeech() {
+  if (activeSpeechAudio) {
+    activeSpeechAudio.pause();
+    activeSpeechAudio.src = '';
+    activeSpeechAudio = null;
+  }
+}
 
 type SplitSpeechOptions = {
   chunkMaxChars?: number;
@@ -117,6 +126,71 @@ export async function fetchMentorSpeechAudio(
   }
 
   return URL.createObjectURL(audioBlob);
+}
+
+function playAudioUrl(url: string, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(url);
+    activeSpeechAudio = audio;
+
+    const cleanup = () => {
+      signal?.removeEventListener('abort', onAbort);
+      if (activeSpeechAudio === audio) {
+        activeSpeechAudio = null;
+      }
+    };
+
+    const onEnded = () => {
+      cleanup();
+      resolve();
+    };
+
+    const onError = () => {
+      cleanup();
+      reject(new Error('Unable to play voice output.'));
+    };
+
+    const onAbort = () => {
+      audio.pause();
+      cleanup();
+      resolve();
+    };
+
+    audio.addEventListener('ended', onEnded, { once: true });
+    audio.addEventListener('error', onError, { once: true });
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    audio.play().catch(reject);
+  });
+}
+
+/** Fetch and play TTS chunks with one-chunk-ahead prefetch to avoid gaps. */
+export async function playMentorSpeechSequence(
+  text: string,
+  signal?: AbortSignal,
+  options: SplitSpeechOptions = {},
+): Promise<void> {
+  const chunks = splitSpeechTextForTts(text, options);
+  if (!chunks.length) {
+    throw new MentorSpeechError('Cannot speak an empty response.');
+  }
+
+  let nextFetch = fetchMentorSpeechAudio(chunks[0], signal);
+
+  for (let i = 0; i < chunks.length; i++) {
+    if (signal?.aborted) {
+      throw new MentorSpeechError('Speech request was aborted.');
+    }
+
+    const speechUrl = await nextFetch;
+
+    if (i + 1 < chunks.length) {
+      nextFetch = fetchMentorSpeechAudio(chunks[i + 1], signal);
+    }
+
+    await playAudioUrl(speechUrl, signal);
+    URL.revokeObjectURL(speechUrl);
+  }
 }
 
 export async function fetchMentorSpeechAudioChunks(

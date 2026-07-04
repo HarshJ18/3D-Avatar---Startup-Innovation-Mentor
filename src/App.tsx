@@ -9,9 +9,9 @@ import { mentorProfile } from './data/mentorProfile';
 import { revealMessageWordByWord } from './lib/revealMessage';
 import { sendMessageToMentor, MentorApiError } from './lib/stackAiClient';
 import {
-  fetchMentorSpeechAudio,
+  playMentorSpeechSequence,
   preconnectTtsProvider,
-  splitSpeechTextForTts,
+  stopActiveMentorSpeech,
 } from './lib/ttsClient';
 import type { AvatarState, ChatMessage } from './types';
 import { FALLBACK_ERROR_MESSAGE } from './types';
@@ -64,8 +64,6 @@ export default function App() {
   const sessionIdRef = useRef(0);
   const userIdRef = useRef(createUserId());
   const revealSignalRef = useRef({ cancelled: false });
-  const speechAudioRef = useRef<HTMLAudioElement | null>(null);
-  const speechUrlRef = useRef<string | null>(null);
   const speechAbortRef = useRef<AbortController | null>(null);
 
   const stopActiveSpeech = useCallback((cancelReveal = false) => {
@@ -74,15 +72,7 @@ export default function App() {
     }
     speechAbortRef.current?.abort();
     speechAbortRef.current = null;
-    if (speechAudioRef.current) {
-      speechAudioRef.current.pause();
-      speechAudioRef.current.src = '';
-      speechAudioRef.current = null;
-    }
-    if (speechUrlRef.current) {
-      URL.revokeObjectURL(speechUrlRef.current);
-      speechUrlRef.current = null;
-    }
+    stopActiveMentorSpeech();
   }, []);
 
   const handleNewSession = useCallback(() => {
@@ -128,46 +118,10 @@ export default function App() {
 
       const speechPromise = (async () => {
         preconnectTtsProvider();
-        const textChunks = splitSpeechTextForTts(fullText, {
-          firstChunkMaxChars: 100,
-          chunkMaxChars: 240,
+        await playMentorSpeechSequence(fullText, speechSignal, {
+          firstChunkMaxChars: 180,
+          chunkMaxChars: 480,
         });
-        for (const chunk of textChunks) {
-          if (speechSignal.aborted || activeSession !== sessionIdRef.current) return;
-          const speechUrl = await fetchMentorSpeechAudio(chunk, speechSignal);
-          if (speechUrlRef.current) URL.revokeObjectURL(speechUrlRef.current);
-          speechUrlRef.current = speechUrl;
-
-          const audio = new Audio(speechUrl);
-          speechAudioRef.current = audio;
-          await new Promise<void>((resolve, reject) => {
-            const cleanup = () => {
-              speechSignal.removeEventListener('abort', onAbort);
-            };
-            const onEnded = () => {
-              cleanup();
-              resolve();
-            };
-            const onError = () => {
-              cleanup();
-              reject(new Error('Unable to play voice output.'));
-            };
-            const onAbort = () => {
-              audio.pause();
-              cleanup();
-              resolve();
-            };
-
-            audio.addEventListener('ended', onEnded, { once: true });
-            audio.addEventListener('error', onError, { once: true });
-            speechSignal.addEventListener('abort', onAbort, { once: true });
-
-            audio
-              .play()
-              .then(() => undefined)
-              .catch((err) => reject(err));
-          });
-        }
       })().catch((err) => {
         const message = err instanceof Error ? err.message : String(err);
         if (!/aborted/i.test(message)) {
@@ -193,14 +147,6 @@ export default function App() {
       setIsSpeaking(false);
       setAvatarState('idle');
       speechAbortRef.current = null;
-      if (speechAudioRef.current) {
-        speechAudioRef.current.src = '';
-        speechAudioRef.current = null;
-      }
-      if (speechUrlRef.current) {
-        URL.revokeObjectURL(speechUrlRef.current);
-        speechUrlRef.current = null;
-      }
     },
     [],
   );
